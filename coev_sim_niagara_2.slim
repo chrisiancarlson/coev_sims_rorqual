@@ -1,0 +1,514 @@
+// Trait Matching in Space
+// Dials to toggle: population size (K parameters)
+// Dispersal (sigma)
+// Genetic Architecture
+// Don't mess with biotic selection
+species all initialize() {
+	initializeSLiMModelType("nonWF");
+	
+	
+	defineConstant("N0_plant", asInteger(10000)); // Initial plant 
+	defineConstant("N0_moth", asInteger(10000)); // Initial moth #
+	
+	defineConstant("bM", 75); //moth fecundity benefit
+	defineConstant("bP", 75); // plant fecundity benefit 
+	
+	defineConstant("rM", 75); //moth intrinsic growth
+	defineConstant("rP", 75); // plant intrinsic growth 
+	
+//	defineConstant("S_S", 5);	// stabilizing selection on interaction trait - not being used currently
+	//defineConstant('b_max', sum(c(rP, exp(1-0.05)/exp(1)*1*bP)));
+	//b_max = exp(rM+bM);
+	// number of partners each moth gets to choose: 
+	defineConstant('C', 1);
+	
+	// new definition of bM: 
+	defineConstant('b_Max', rM + bM);
+	
+	defineConstant("SIDE", 10);// one side length; square root of S
+	defineConstant("S", SIDE*SIDE);
+	// Spatial parameter: 
+	//	defineConstant("sigma",0.0125); // dispersal
+	defineConstant("c_sigma",0.2); // competition (don't change)
+	
+	defineConstant("KP", 220); //plant carrying capacity
+	defineConstant("KM", 220); // moth carrying capacity 
+	//defineConstant("D_p", 0.05);	// plant dispersal kernel width
+//	defineConstant("D_m", 0.05);	// moth dispersal kernel width
+	//defineConstant("rep", 1);
+	
+	// generic file names: 
+	defineConstant("fname_m", "m_slim_coev_" + D_p +"_sigma_p_"+D_m+"_sigma_m_C_"+C+ "_rep"+rep+"_t_");
+	
+	defineConstant("fname_p", "p_slim_coev_" + D_p +"_sigma_p_"+D_m+"_sigma_m_C_"+C+ "_rep_"+rep+ "_t_");
+	
+	
+	
+	defineConstant("lname","slim_coev_" + D_p +"_sigma_p_"+D_m+"_sigma_m_C_"+C+ "_rep"+rep+"_log.txt");
+	
+	
+	defineConstant("CROSS_SCRIPT", "subpop.addCrossed(individual, mate);");
+	//defineConstant("SELF_SCRIPT", "subpop.addSelfed(individual);");
+	defineConstant("burn", 1000);	// end of burn in
+	defineConstant("end", 11000);	// end of sim
+	defineConstant("samplings", c(10000,end));
+	//defineConstant("samplings", c(10000,10900,10950,10975,end));	// sampling times
+	
+	
+	
+	// plant mate finding :
+	initializeInteractionType(1, "xy", maxDistance=3*D_p);
+	i1.setInteractionFunction("n", 1.0,D_p);
+	
+	// moth mate finding:
+	initializeInteractionType(2, "xy", maxDistance=3*D_m);
+	i2.setInteractionFunction("n", 1.0,D_m);
+	
+	// moths looking for partners
+	initializeInteractionType(3, "xy", maxDistance=3*D_m);
+	i3.setInteractionFunction("n", 1.0,D_m);
+	
+	// plant competition:
+	initializeInteractionType(4, "xy", maxDistance=3*c_sigma);
+	i4.setInteractionFunction("n", 1.0,c_sigma);
+	
+	// moth competition:
+	initializeInteractionType(5, "xy", maxDistance=3*c_sigma);
+	i5.setInteractionFunction("n", 1.0,c_sigma);
+
+}
+
+
+species moth initialize() {
+	initializeSpecies(avatar="🦋", color="cornflowerblue");
+	initializeSLiMOptions(dimensionality="xy",periodicity="xy");
+	// mutations that effect trait
+	initializeMutationType("m1", 0.5, "n", 0.0, 0.75);
+	m1.convertToSubstitution = F;
+	// neutral mutations: 
+	//initializeMutationType("m4", 0.5, "f", 0.0);
+	//initializeGenomicElementType("g2",c(m2,m4), c(1,1));
+	initializeGenomicElementType("g1",m1,1);
+	initializeGenomicElement(g1, 0, 99999);
+	initializeMutationRate(1e-7);
+	initializeRecombinationRate(1e-8);
+	
+	initializeTreeSeq(retainCoalescentOnly=F); // record the true tree sequence (and keep unary nodes too, for locating ancestors, later)
+	
+	// neutral genomic element
+	// one genomic element randomly accumulating mutations
+	
+	//initializeGenomicElementType("g4",m4, 1.0);
+	//initializeGenomicElement(g4, 10000,19999);
+}
+
+
+species plant initialize() {
+	initializeSpecies(avatar="🌱", color="green");
+
+	initializeSLiMOptions(dimensionality="xy",periodicity="xy");
+	// mutations that shape the trait of interest: 
+	initializeMutationType("m2", 0.5, "n", 0.0, 0.75);
+	
+	// neutral mutations that do not: 
+	//initializeMutationType("m3", 0.5, "f", 0.0);
+	
+	initializeGenomicElementType("g2",m2,1);
+	m2.convertToSubstitution = F;
+	//	initializeGenomicElementType("g1",c(m2,m3), c(1,1));
+	initializeGenomicElement(g2, 0,99999);
+	initializeMutationRate(1e-7);
+	initializeRecombinationRate(1e-8);
+	initializeTreeSeq(retainCoalescentOnly=F); // record the true tree sequence (and keep unary nodes too, for locating ancestors, later)
+	
+	//initializeGenomicElementType("g3",m3, 1.0);
+	//initializeGenomicElement(g3, 10000,19999);
+
+
+}
+
+species moth mutationEffect(m1) { return 1.0; }
+species plant mutationEffect(m2) { return 1.0; }
+
+
+// neutral burn in: 
+ticks all 1:burn first(){
+	
+	moth_pop = moth.subpopulations;
+	moths = moth_pop.individuals;
+	plant_pop  = plant.subpopulations;
+	plants  = plant_pop.individuals;
+	// plant mate finding: 
+	i1.evaluate(plant_pop);
+	//	// moth mate finding: 
+	i2.evaluate(moth_pop);
+	
+	// plant comp: 
+	i4.evaluate(plant_pop);
+	//	// moth comp: 
+	i5.evaluate(moth_pop);
+	
+	
+	moths.tagF = 0.05; // set the squared difference between traits
+	moths.tag = 1;
+	//print(moths.tagF);
+	//plants  = plant.subpopulations.individuals;
+	plants.tagF =  0.05;// set the squared difference between traits
+	plants.tag = 1;
+	//print(plants.tagF);
+	
+	
+	// Evaluate competition and offspring number for moths: 
+	// CC 9/2 - I could probably speed this up by vectorizing the next two for loops. 
+	//moth_density = i5.localPopulationDensity(moths);
+	for (individual in moths){
+		// facultative: 
+	
+		
+		// new method of calculating benefit: 
+		benefit = sum(c(rM, bM*exp(-individual.tagF)));
+		
+		//print(c('benefit',benefit));
+		local_density = i5.localPopulationDensity(individual);
+		//	print(c('density',local_density));
+		b_f = benefit/(1+((b_Max-1)*local_density)/KM);
+		
+		//	print(c('litter_size',b_f));
+		individual.tagF = b_f;
+	}
+	// Competition and offspring number for plants: 
+	
+	//plants_density = i4.localPopulationDensity(plants);
+	for (individual in plants){
+		// facultative: 
+		//benefit = sum(c(rP, exp(1-individual.tagF)/exp(1)*individual.tag*bP));
+		// new method of calculating benefit: 
+		benefit = sum(c(rP, bP*exp(-individual.tagF)));
+		
+		local_density = i4.localPopulationDensity(individual);
+		b_f = benefit/(1+((b_Max-1)*local_density)/KP);
+		
+		individual.tagF = b_f;
+	
+	}
+}
+
+// Each moth picks a single plant partner with replacement
+ticks all (burn+1):first(){
+	moths = moth.subpopulations.individuals;
+	moth_pop = moth.subpopulations;
+	plants = plant.subpopulations.individuals;
+	plant_pop = plant.subpopulations;
+	// Initialize a dictionary for plant trait differences: 
+	p_dif_dict = Dictionary();
+	plants.tag=0;
+	moths.tag=0;
+	
+	// Set dummy tag:  
+	//plants.tagF=1.2;
+	//moths.tagF=1.2;	
+	
+	// plant mate finding: 
+	i1.evaluate(plant_pop);
+	// moth mate finding: 
+	i2.evaluate(moth_pop);
+	
+	// moth partner finding: 
+	i3.evaluate(c(moth_pop,plant_pop));
+	
+	// plant comp: 
+	i4.evaluate(plant_pop);
+	//	// moth comp: 
+	i5.evaluate(moth_pop);
+	
+	
+	for (ind in plants)
+		p_dif_dict.setValue(ind.index,0.0);
+	
+	// Let each moth choose a plant. The same plant could be chosen multiple times. 
+	
+	for (ind in moths)
+	{
+	
+		// CC 9/2 - new addition here. C=1 recovers the same simulations I've been running. 
+		//Choose C plants: 
+		chosen_plants = i3.drawByStrength(ind,C,plant_pop);
+		
+		//print(chosen_plant);
+		//print(length(chosen_plant));
+		
+		// if no partners were found, get just the intrinsic reproductive output: 
+		if (length(chosen_plants) == 0)  ind.tagF=0.0;
+		else
+		{
+		// for each chosen plant
+		for (chosen_plant in chosen_plants){
+			
+			dif=exp((ind.tagF-chosen_plant.tagF)^2*-1);// e^-(Zm-Zp)^2
+			
+			
+			
+			// access the current value of the plant trait differences dictionary: 
+			current=p_dif_dict.getValue(chosen_plant.index);
+			// add the squared difference to teh dictionary: 
+			p_dif_dict.setValue(chosen_plant.index,current+dif);
+			
+		// end of loop over each chosen plant: 
+		}
+		// end of if/else statement: 
+		ind.tagF=sum(exp(((chosen_plants.tagF-ind.tagF)^2)*-1));
+		//print(ind.tagF);
+		}
+	
+		// end of loop over each moth: 
+	}
+	
+	// set the plant tags based on the dictionary values: 
+	for (ind in plants)
+	{
+	// CC9/2 - for simulations with moths that have a greater number of partners, normalize by the number of partners each moth chooses
+		ind.tagF = p_dif_dict.getValue(ind.index);
+		//print(ind.tagF);
+	}
+	
+	
+	// Evaluate competition and offspring number for moths: 
+	moth_density = i5.localPopulationDensity(moths);
+	for (individual in moths){
+		// obligate: 
+	
+		
+		benefit = rM+ bM*individual.tagF/C;
+		// ^ normalize benefit by number of partners to prevent simulations with more partners from having significantly different abundances
+		local_density = i5.localPopulationDensity(individual);
+		
+		// Density regulation
+		b_f = benefit/(1+((b_Max-1)*local_density)/KM);
+		// ^ I think I may have cheekily rescaled KM by a factor of 2/3 at one point to get the moth and plant abundances to be more similar. 
+		//	print(c('litter mean', b_f));
+		individual.tagF = b_f;
+	}
+	// Competition and offspring number for plants: 
+	
+	plants_density = i4.localPopulationDensity(plants);
+	for (individual in plants){
+		
+		benefit = rM + bP*individual.tagF/C;
+		//print(c('plant',benefit));
+		local_density = i4.localPopulationDensity(individual);
+		b_f = benefit/(1+((b_Max-1)*local_density)/KP);
+		
+		individual.tagF = b_f;
+	}
+	
+	//print(c('p litter mean', mean(plants.tagF)));
+	//print(c('m litter mean', mean(moths.tagF)));
+}
+
+
+species moth reproduction (){
+	mate = i2.drawByStrength(individual);
+	//print(b_f);
+	
+	litterSize = rpois(1, individual.tagF);
+	
+	
+	if (mate.size())
+	{
+		if (litterSize > 0)
+		{
+			offspring = sapply(seqLen(litterSize), CROSS_SCRIPT);
+			
+			// vectorized set of offspring spatial positions, based
+			// on the first parent position plus dispersal D_m
+			positions = rep(individual.spatialPosition, litterSize);
+			positions = positions + rnorm(litterSize * 2, 0, D_m);
+			positions = p1.pointPeriodic(positions);
+			//print(c(litterSize,positions));
+			offspring.setSpatialPosition(positions);
+		}
+	}
+	
+	// Old code if we want to allow selfing: 
+	//else{
+	//if (litterSize > 0){
+	//			offspring = sapply(seqLen(litterSize), SELF_SCRIPT);
+	//
+	//			// vectorized set of offspring spatial positions, based
+	//			// on the first parent position plus dispersal D_m
+	//			positions = rep(individual.spatialPosition, litterSize);
+	//		   positions = positions + rnorm(litterSize * 2, 0, D_m);
+	//			positions = p2.pointPeriodic(positions);
+	//			//print(c(litterSize,positions));
+	//			offspring.setSpatialPosition(positions);
+	//
+	//
+	//	}
+	//	}
+}
+
+
+species plant reproduction (){
+	
+	mate = i1.drawByStrength(individual);
+	//print(b_f);
+	
+	litterSize = rpois(1, individual.tagF);
+	
+	
+	if (mate.size())
+	{
+		if (litterSize > 0)
+		{
+			offspring = sapply(seqLen(litterSize), CROSS_SCRIPT);
+			
+			// vectorized set of offspring spatial positions, based
+			// on the first parent position plus dispersal D_m
+			positions = rep(individual.spatialPosition, litterSize);
+			positions = positions + rnorm(litterSize * 2, 0, D_p);
+			positions = p2.pointPeriodic(positions);
+			//print(c(litterSize,positions));
+			offspring.setSpatialPosition(positions);
+		}
+	
+	}
+	//else{
+	//if (litterSize > 0){
+	//			offspring = sapply(seqLen(litterSize), SELF_SCRIPT);
+	//
+	//			// vectorized set of offspring spatial positions, based
+	//			// on the first parent position plus dispersal D_m
+	//			positions = rep(individual.spatialPosition, litterSize);
+	//		   positions = positions + rnorm(litterSize * 2, 0, D_p);
+	//			positions = p1.pointPeriodic(positions);
+	//			//print(c(litterSize,positions));
+	//			offspring.setSpatialPosition(positions);
+	//
+	//
+	//	}
+	//	}
+}
+
+// non-overlapping generations: parents die, offspring live
+species moth survival() {
+	return (individual.age == 0);
+}
+
+species plant survival() {
+	return (individual.age == 0);
+}
+
+
+// Find the values of the trait and optionally have stabilizing selection (currently not turned on). 
+ticks all burn:early() {
+	// calculate phenotypes and implement stabilizing selection
+	//	scale = dnorm(0.0, 0.0, S_S);
+	
+	plants = plant.subpopulations.individuals;
+	phenotypes = plants.sumOfMutationsOfType(m2);
+	// Prevent extreme phenotypes: 
+	//plants.fitnessScaling = dnorm(phenotypes, 0.0, S_S) / scale;
+	//print(plants.fitnessScaling);
+	plants.tagF = phenotypes;
+	//print(c('🌱 traits',mean(phenotypes),sd(phenotypes)));
+	//p2.individuals.tagF = phenotypes;
+	
+	moths  = moth.subpopulations.individuals;
+	phenotypes = moths.sumOfMutationsOfType(m1);
+	// Prevent extreme phenotypes: 
+	//moths.fitnessScaling = dnorm(phenotypes, 0.0, S_S) / scale;
+	moths.tagF = phenotypes;
+	//print(c('🦋 traits', mean(phenotypes),sd(phenotypes)));
+	
+	//p1.individuals.tagF = phenotypes;
+
+}
+
+// Stabilizing selection during burn in: 
+//ticks all 1:burn early() {
+//	// calculate phenotypes and implement stabilizing selection
+//	scale = dnorm(0.0, 0.0, S_S);
+//	
+//	plants = plant.subpopulations.individuals;
+//	phenotypes = plants.sumOfMutationsOfType(m2);
+//	// Prevent extreme phenotypes: 
+//	plants.fitnessScaling = dnorm(phenotypes, 0.0, S_S) / scale;
+//	//print(plants.fitnessScaling);
+//	//plants.tagF = phenotypes;
+//	//print(c('🌱 traits',mean(phenotypes),sd(phenotypes)));
+//	//p2.individuals.tagF = phenotypes;
+//	
+//	moths  = moth.subpopulations.individuals;
+//	phenotypes = moths.sumOfMutationsOfType(m2);
+//	// Prevent extreme phenotypes: 
+//	moths.fitnessScaling = dnorm(phenotypes, 0.0, S_S) / scale;
+//	//moths.tagF = phenotypes;
+//	//print(c('🦋 traits', mean(phenotypes),sd(phenotypes)));
+//	
+//	//p1.individuals.tagF = phenotypes;
+//	
+//}
+
+// Record important stuff
+
+ticks all 1 early() {
+	moth.addSubpop("p1", N0_moth);
+	plant.addSubpop("p2", N0_plant);
+	plant.subpopulations.individuals.tagF=0.111111;
+	moth.subpopulations.individuals.tagF=0.111111;
+	p1.setSpatialBounds(c(0, 0, SIDE, SIDE));
+	p1.individuals.setSpatialPosition(p1.pointUniform(N0_moth));
+	
+	p2.setSpatialBounds(c(0, 0, SIDE, SIDE));
+	p2.individuals.setSpatialPosition(p2.pointUniform(N0_plant));
+
+}
+
+// record more important stuff: 
+ticks all burn+1 early() {
+	log = community.createLogFile(lname, logInterval=10);
+	log.addTick();
+	log.addPopulationSize(moth);
+	log.addMeanSDColumns("moth", "p1.individuals.tagF;");
+	log.addPopulationSize(plant);
+	log.addMeanSDColumns("plant", "p2.individuals.tagF;");
+}
+
+
+
+ticks all late()  {
+	plants =plant.subpopulations.individuals;
+	moths =moth.subpopulations.individuals;
+	plant.treeSeqRememberIndividuals(plants, permanent=F); // remember individuals only if ancestors of final population
+	moth.treeSeqRememberIndividuals(moths, permanent=F); // remember individuals only if ancestors of final population
+}
+
+
+// output important stuff: 
+ticks all samplings late() {
+	//community.outputFull("~/model_output.txt");
+	plants =plant.subpopulations.individuals;
+	phenotypesP = plants.sumOfMutationsOfType(m2);
+	plants.tagF=phenotypesP;
+	
+	moths = moth.subpopulations.individuals;
+	phenotypesM = moths.sumOfMutationsOfType(m1);
+	moths.tagF=phenotypesM;
+	tick=community.tick;
+	moth.outputFull(fname_m+tick+"_o.txt");
+	plant.outputFull(fname_p+tick+"_o.txt");
+	
+	plant.treeSeqOutput(fname_m+tick+"_tr.trees"); // output treesequence
+	//catn("Done: m_slim_coev" + D_p +"_sigma_p_"+D_m+"_sigma_m_"+ "rep"+rep);
+	
+	
+	moth.treeSeqOutput(fname_p+tick+"_tr.trees"); // output treesequence
+	//catn("Done: p_slim_coev" + D_p +"_sigma_p_"+D_m+"_sigma_m_"+ "rep"+rep);
+	//community.simulationFinished();
+	
+	//plant.output("~/plant_output.txt");
+
+}
+
+ticks all end late() {community.simulationFinished();
+}
