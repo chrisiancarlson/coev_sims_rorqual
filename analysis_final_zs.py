@@ -1178,7 +1178,7 @@ def run_all_analysis():
                     ## get plant data and run phenotypic analysis: 
                 space_dict_p,mut_dict_p= import_output_full("./{}".format(p))
                 num=200
-                output,moth_demes,plant_demes=phenotypic_analysis(space_dict_m,mut_dict_m,space_dict_p,mut_dict_p,float(sigma_m)/2,num)
+                output,moth_demes,plant_demes=phenotypic_analysis(space_dict_m,mut_dict_m,space_dict_p,mut_dict_p,float(sigma_m),num)
                 if z_save==True: 
                     for i,list in enumerate(output):
                         target=z_dict[str(sigma_m)][i]
