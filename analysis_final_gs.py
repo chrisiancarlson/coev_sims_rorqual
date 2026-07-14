@@ -1231,7 +1231,7 @@ def run_all_analysis():
             print('dispersal {}'.format(str(sigma_m))) 
             
             
-            if genom==True and rep<=2: ## toggle genomic analysis
+            if genom==True: ## toggle genomic analysis
                 space_dict_m,mut_dict_m = import_output_full("./{}".format(m))
                 # half_muts=len(mut_dict_m.keys())//2
                 # key_list = list(mut_dict_m.keys())
