@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=36:00:00
+#SBATCH --time=18:00:00
 #SBATCH --account=def-freder19
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
